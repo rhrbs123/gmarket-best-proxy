@@ -1,6 +1,7 @@
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
+import * as cheerio from "cheerio";
 
 const app = express();
 app.use(cors());
@@ -13,31 +14,36 @@ app.get("/gmarket", async (req, res) => {
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
       },
     });
+
     const html = await response.text();
-
-    // 상품정보 추출 (정규식 기반 파싱)
-    const regex = /<a[^>]*class="link__item"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+    const $ = cheerio.load(html);
     const items = [];
-    let match;
-    while ((match = regex.exec(html)) !== null) {
-      const link = "https://www.gmarket.co.kr" + match[1];
-      const itemBlock = match[2];
 
-      const titleMatch = itemBlock.match(/<span class="text__item">([^<]+)<\/span>/);
-      const priceMatch = itemBlock.match(/<strong class="text__value">([\d,]+)<\/strong>/);
-      const reviewMatch = itemBlock.match(/<span class="text__review">([\d,]+)<\/span>/);
+    $(".best-list li").slice(0, 50).each((i, el) => {
+      const name = $(el).find(".itemname").text().trim();
+      const link = $(el).find(".itemname").attr("href");
+      const originalPrice = $(el).find(".o-price").text().trim();
+      const salePrice = $(el).find(".s-price strong").text().trim();
+      const salePercent = $(el).find(".s-price em").text().trim();
+      const coupon = $(el).find(".icon.coupon").attr("alt") || "";
+      const review = $(el).find(".itemad span:contains('상품평')").text().trim();
+      const buyCount = $(el).find(".itemad span:contains('구매')").text().trim();
 
       items.push({
-        title: titleMatch ? titleMatch[1].trim() : null,
-        price: priceMatch ? priceMatch[1].replace(/,/g, "") : null,
-        reviews: reviewMatch ? reviewMatch[1].replace(/,/g, "") : null,
-        url: link,
+        rank: i + 1,
+        name,
+        originalPrice,
+        salePrice,
+        salePercent,
+        coupon,
+        review,
+        buyCount,
+        link: link ? "https://www.gmarket.co.kr" + link : "",
       });
-    }
+    });
 
     res.json({ count: items.length, items });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: error.message });
   }
 });
